@@ -1,6 +1,6 @@
 // Simple zwavejs2mqtt plugin for prometheus metrics
 
-const promCli = require('prom-client')
+import promCli from 'prom-client'
 const PromCliRegistry = promCli.Registry
 const register = promCli.register;
 
@@ -53,7 +53,7 @@ function zwaveLabel(label) {
         .replaceAll(/[^a-zA-Z0-9_]/ig, '') // Remove all non-allowed letters (see https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels)
 }
 
-class ZwavejsProm {
+export default class ZwavejsProm {
     constructor(ctx) {
         this.zwave = ctx.zwave
         this.mqtt = ctx.mqtt
@@ -227,8 +227,4 @@ class ZwavejsProm {
         node.name = name
         node.location = loc
     }
-}
-
-module.exports = function (ctx) {
-    return new ZwavejsProm(ctx)
 }
