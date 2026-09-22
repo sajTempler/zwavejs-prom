@@ -1,8 +1,6 @@
 // Simple zwavejs2mqtt plugin for prometheus metrics
 
-import promCli from 'prom-client'
-const PromCliRegistry = promCli.Registry
-const register = promCli.register;
+import { Registry, Gauge, register } from '@prometheus-io/client'
 
 const labelNames = [
     'nodeId',
@@ -18,12 +16,12 @@ const labelNames = [
 ]
 
 function shallowEquals(a, b) {
-    for (let key in a) {
+    for (const key in a) {
         if (!(key in b) || a[key] !== b[key]) {
             return false;
         }
     }
-    for (let key in b) {
+    for (const key in b) {
         if (!(key in a)) {
             return false;
         }
@@ -62,7 +60,7 @@ export default class ZwavejsProm {
 
         this.logger.info('Starting ZwaveJS prom plugin')
 
-        this.registry = new PromCliRegistry()
+        this.registry = new Registry()
         this.gauges = {}
         this.nodes = {}
 
@@ -70,7 +68,7 @@ export default class ZwavejsProm {
         this.zwave.on('nodeRemoved', this.onNodeRemoved.bind(this))
         this.zwave.on('nodeStatus', this.onNodeStatus.bind(this))
 
-        this.app.get("/metrics", this.sendMetrics.bind(this))
+        this.app.get('/metrics', this.sendMetrics.bind(this))
     }
 
     async destroy() {
@@ -78,17 +76,18 @@ export default class ZwavejsProm {
     }
 
     async sendMetrics(req, res) {
-        res.set('Content-Type', register.contentType);
-        this.registry.metrics().then((m) => res.send(m))
+        res.set('Content-Type', this.registry.contentType || register.contentType)
+        const metrics = await this.registry.metrics()
+        res.send(metrics)
     }
 
     onNodeRemoved(node) {
         //this.logger.info(`Node removed: ${JSON.stringify(node)}`)
 
-        let id = node.id.toString();
-        let n = this.nodes[id]
+        const id = node.id.toString()
+        const n = this.nodes[id]
         if (isDefined(n)) {
-            for (const v in n.values) {
+            for (const v of Object.values(n.values)) {
                 v.gauge.remove(v.labels)
             }
 
@@ -102,13 +101,13 @@ export default class ZwavejsProm {
     }
 
     updateNode(node) {
-        let n = getOrDefault(this.nodes, node.id.toString(), () => ({
+        const n = getOrDefault(this.nodes, node.id.toString(), () => ({
             values: {},
             name: node.name,
             location: node.loc
         }))
 
-        if (n.name !== node.name || n.loc !== node.loc) {
+        if (n.name !== node.name || n.location !== node.loc) {
             this.updateNameAndLocation(n, node.name, node.loc)
         }
 
@@ -132,7 +131,7 @@ export default class ZwavejsProm {
             return
         }
 
-        let states = {}
+        const states = {}
         if (value.list) {
             for (const s of value.states) {
                 states[s.value] = s.text
@@ -158,12 +157,12 @@ export default class ZwavejsProm {
                 return
         }
 
-        let z2mNode = this.zwave.nodes.get(value.nodeId)
+        const z2mNode = this.zwave.nodes.get(value.nodeId)
 
         let gaugeName = `zwave_${zwaveLabel(value.commandClassName)}_${zwaveLabel(value.property)}`
         let gaugeHelp = `Zwave, ${value.commandClassName}, ${value.propertyName}`
 
-        let labels = {
+        const labels = {
             nodeId: value.nodeId,
             name: z2mNode.name,
             location: z2mNode.loc,
@@ -185,27 +184,27 @@ export default class ZwavejsProm {
             labels.state = state
         }
 
-        let node = this.updateNode(z2mNode)
+        const node = this.updateNode(z2mNode)
 
         //this.logger.info(`value: ${JSON.stringify(value)}`)
         //this.logger.info(`gaugeName: ${gaugeName}, gaugeHelp: ${gaugeHelp}`)
 
-        let gauge = getOrDefault(this.gauges, gaugeName, () =>
-            new promCli.Gauge({
+        const gauge = getOrDefault(this.gauges, gaugeName, () =>
+            new Gauge({
                 registers: [this.registry],
                 name: gaugeName,
                 help: gaugeHelp,
                 labelNames: labelNames
             }))
 
-        let nodeValue = getOrDefault(node.values, value.id, () => ({
+        const nodeValue = getOrDefault(node.values, value.id, () => ({
             labels: labels,
             value: metricValue,
             gauge: gauge
         }))
 
         if (!shallowEquals(labels, nodeValue.labels)) {
-            gauge.remove(labels)
+            gauge.remove(nodeValue.labels)
         }
 
         gauge.set(labels, metricValue)
